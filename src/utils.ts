@@ -10,14 +10,9 @@
  * incorrectly rejected. Can you spot why?
  */
 export function validateEmail(email: string): boolean {
-  // BUG: regex only allows one dot segment in the domain part
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const parts = email.split('@');
-  if (parts.length !== 2) return false;
-  const domain = parts[1];
-  const domainParts = domain.split('.');
-  if (domainParts.length !== 2) return false; // ← bug: rejects sub.domain.com
-  return emailRegex.test(email);
+  // simplified regex for better performance
+  const emailRegex = /^[^\s@]+@[^\s@.]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim().toLowerCase());
 }
 
 /**
@@ -52,6 +47,6 @@ export function isNonEmptyString(value: unknown): value is string {
  * Calling getPage(items, 1, 10) skips the first 10 items instead of returning them.
  */
 export function getPage<T>(items: T[], page: number, pageSize: number): T[] {
-  const start = page * pageSize; // ← bug: should be (page - 1) * pageSize
+  const start = (page - 1) * pageSize;
   return items.slice(start, start + pageSize);
 }
