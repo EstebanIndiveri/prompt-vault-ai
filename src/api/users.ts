@@ -1,28 +1,21 @@
 import express from 'express';
+import { validateEmail } from '../utils';
 import { getPage } from '../utils';
+import { users, incrementNextId, revokeUserSessions } from '../store';
+import { authenticateToken } from './auth';
 
 const router = express.Router();
-
-// In-memory "database" for the workshop
-const users = [
-  { id: 1, name: 'Ana García', email: 'ana@example.com', role: 'admin' },
-  { id: 2, name: 'Carlos López', email: 'carlos@example.com', role: 'user' },
-  { id: 3, name: 'María Rodríguez', email: 'maria@sub.example.com', role: 'user' },
-];
-
-let nextId = 4;
 
 /**
  * GET /users
  * BUG: when the users array is empty, this throws instead of returning [].
  * Reproducir: vaciar el array `users` y llamar GET /users.
  */
-router.get('/', (req, res) => {
+router.get('/', authenticateToken, (req, res) => {
   const page = parseInt(req.query.page as string) || 1;
   const pageSize = parseInt(req.query.pageSize as string) || 10;
 
-  // BUG: accessing [0] without checking if array is empty
-  const firstUser = users[0].name; // ← throws if users is empty
+  const firstUser = users[0]?.name ?? 'none';
   console.log(`Fetching users, first user: ${firstUser}`);
 
   const paginated = getPage(users, page, pageSize);
@@ -32,7 +25,7 @@ router.get('/', (req, res) => {
 /**
  * GET /users/:id
  */
-router.get('/:id', (req, res) => {
+router.get('/:id', authenticateToken, (req, res) => {
   const id = parseInt(req.params.id);
   const user = users.find(u => u.id === id);
 
@@ -40,27 +33,51 @@ router.get('/:id', (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
-  res.json(user);
+  const { password: _password, ...safeUser } = user;
+  res.json(safeUser);
 });
 
 /**
  * POST /users
- * Missing: input validation, duplicate email check
  */
-router.post('/', (req, res) => {
-  const { name, email, role } = req.body;
+router.post('/', authenticateToken, (req, res) => {
+  try {
+    const { name, email, role, password } = req.body;
 
-  // Missing validation — any input is accepted
-  const newUser = { id: nextId++, name, email, role: role || 'user' };
-  users.push(newUser);
+    if (!name || typeof name !== 'string' || name.trim() === '') {
+      return res.status(400).json({ error: 'name is required' });
+    }
 
-  res.status(201).json(newUser);
+    if (!email || typeof email !== 'string' || email.trim() === '') {
+      return res.status(400).json({ error: 'email is required' });
+    }
+
+    if (!password || typeof password !== 'string' || password.trim() === '') {
+      return res.status(400).json({ error: 'password is required' });
+    }
+
+    if (!validateEmail(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    if (users.find(u => u.email === email)) {
+      return res.status(409).json({ error: 'Email already in use' });
+    }
+
+    const newUser = { id: incrementNextId(), name: name.trim(), email, role: role || 'user', password };
+    users.push(newUser);
+
+    const { password: _password, ...safeUser } = newUser;
+    res.status(201).json(safeUser);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**
  * DELETE /users/:id
  */
-router.delete('/:id', (req, res) => {
+router.delete('/:id', authenticateToken, (req, res) => {
   const id = parseInt(req.params.id);
   const index = users.findIndex(u => u.id === id);
 
@@ -68,6 +85,7 @@ router.delete('/:id', (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
+  revokeUserSessions(id);
   users.splice(index, 1);
   res.status(204).send();
 });
