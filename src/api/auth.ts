@@ -1,16 +1,30 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { validateEmail, generateToken } from '../utils';
+import { users, sessions, revokeUserSessions } from '../store';
 
 const router = express.Router();
 
-// Simple in-memory session store (not for production!)
-const sessions: Record<string, { userId: number; expiresAt: number }> = {};
+/**
+ * Middleware that verifies a Bearer token and attaches userId to res.locals.
+ * Export for use in other routers (e.g. users).
+ */
+export function authenticateToken(req: Request, res: Response, next: NextFunction): void {
+  const token = req.headers.authorization?.replace('Bearer ', '');
 
-// Hardcoded users for the workshop (in real apps, use a database + bcrypt)
-const credentials: Record<string, { id: number; password: string }> = {
-  'ana@example.com': { id: 1, password: 'password123' },
-  'carlos@example.com': { id: 2, password: 'securepass' },
-};
+  if (!token || !sessions[token]) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  if (Date.now() > sessions[token].expiresAt) {
+    delete sessions[token];
+    res.status(401).json({ error: 'Token expired' });
+    return;
+  }
+
+  res.locals.userId = sessions[token].userId;
+  next();
+}
 
 /**
  * POST /auth/login
@@ -23,7 +37,7 @@ router.post('/login', (req, res) => {
     return res.status(400).json({ error: 'Invalid email format' });
   }
 
-  const user = credentials[email];
+  const user = users.find(u => u.email === email);
 
   // Missing: no rate limiting — brute force is possible
   if (!user || user.password !== password) {
@@ -54,19 +68,15 @@ router.post('/logout', (req, res) => {
 
 /**
  * GET /auth/me
- * Missing: token expiry check
  */
-router.get('/me', (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-
-  if (!token || !sessions[token]) {
-    return res.status(401).json({ error: 'Unauthorized' });
+router.get('/me', authenticateToken, (req, res) => {
+  const user = users.find(u => u.id === res.locals.userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
   }
 
-  // BUG: no expiry check — expired tokens still work
-  const session = sessions[token];
-
-  res.json({ userId: session.userId });
+  const { password: _password, ...safeUser } = user;
+  res.json(safeUser);
 });
 
 export default router;

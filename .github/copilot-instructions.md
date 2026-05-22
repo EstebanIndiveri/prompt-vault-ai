@@ -11,7 +11,7 @@ The repo contains two things:
 ## Language
 
 - Course docs and commit messages: **Spanish**
-- Code, variable names, identifiers, comments: **English**
+- Code, variable names, identifiers, comments in `src/`: **English**
 
 ## Architecture
 
@@ -28,16 +28,30 @@ instructor/          # Full instructor guide (guia-instructor.md)
 scripts/             # ai-review.sh — headless Copilot CLI automation example
 ```
 
+## Runtime Environment
+
+Copy `.env.example` to `.env` before starting the server. Key variables:
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `PORT` | `3000` | Server listen port |
+| `JWT_SECRET` | — | Placeholder for future JWT migration; not currently used |
+| `DATABASE_URL` | — | Placeholder; all data is currently in-memory |
+
+Both `users` (in `src/api/users.ts`) and `sessions` (in `src/api/auth.ts`) are plain in-memory arrays/objects — **all data resets on server restart**. This is intentional for the workshop.
+
 ## Build, Test, Lint
 
 ```bash
 npm install
 npm test                                    # Run all tests
 npm run test:watch                          # Watch mode
+npm run test:coverage                       # Tests with coverage report
 npx jest __tests__/utils.test.ts           # Run single test file
 npx jest --testNamePattern="validateEmail" # Run single test by name
-npm run build                              # Compile TypeScript
-npm run dev                                # Start server with ts-node
+npm run build                              # Compile TypeScript → dist/
+npm run dev                                # Start server with ts-node (port 3000)
+npm run lint                               # ESLint on src/ (.ts files)
 ```
 
 ## Key Conventions (from AGENTS.md)
@@ -48,6 +62,8 @@ npm run dev                                # Start server with ts-node
 - Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, `test:`
 - Never push directly to `main`
 - Do **not** modify `src/legacy/` — it's intentionally untyped for the Módulo 6 exercise
+- Tests use Jest `describe/it`; `it.todo(...)` entries in `__tests__/` are intentional lab exercises — leave them as `todo` unless a lab explicitly asks to implement them
+- Changes to workshop content should touch both `docs/modulo-N-*.md` **and** the corresponding section in `instructor/`
 
 ## Deliberate Bugs (do not fix unless doing a lab exercise)
 
