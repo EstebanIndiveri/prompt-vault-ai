@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { getDb } from './db';
+import { getDb, initSchema } from './db';
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_BODY_LENGTH  = 50_000;
@@ -37,12 +37,10 @@ export async function createPrompt(data: PromptPayload): Promise<void> {
   const body  = data.body.trim();
   validatePayload(title, body, data.tags);
 
+  await initSchema();
   const db = getDb();
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO prompts (title, body) VALUES (?, ?)')
-    .run(title, body);
-
-  attachTags(Number(lastInsertRowid), data.tags);
+  const result = await db.execute({ sql: 'INSERT INTO prompts (title, body) VALUES (?, ?)', args: [title, body] });
+  await attachTags(Number(result.lastInsertRowid), data.tags);
   revalidatePath('/');
 }
 
@@ -55,15 +53,14 @@ export async function updatePrompt(id: number, data: PromptPayload): Promise<voi
   const body  = data.body.trim();
   validatePayload(title, body, data.tags);
 
+  await initSchema();
   const db = getDb();
-  const result = db
-    .prepare('UPDATE prompts SET title = ?, body = ? WHERE id = ?')
-    .run(title, body, id);
+  const result = await db.execute({ sql: 'UPDATE prompts SET title = ?, body = ? WHERE id = ?', args: [title, body, id] });
 
-  if (result.changes === 0) throw new Error(`Prompt ${id} no encontrado.`);
+  if (result.rowsAffected === 0) throw new Error(`Prompt ${id} no encontrado.`);
 
-  db.prepare('DELETE FROM prompt_tags WHERE prompt_id = ?').run(id);
-  attachTags(id, data.tags);
+  await db.execute({ sql: 'DELETE FROM prompt_tags WHERE prompt_id = ?', args: [id] });
+  await attachTags(id, data.tags);
   revalidatePath('/');
 }
 
@@ -71,26 +68,27 @@ export async function updatePrompt(id: number, data: PromptPayload): Promise<voi
  * Deletes a prompt by id (cascade removes prompt_tags rows).
  */
 export async function deletePrompt(id: number): Promise<void> {
-  getDb().prepare('DELETE FROM prompts WHERE id = ?').run(id);
+  await initSchema();
+  await getDb().execute({ sql: 'DELETE FROM prompts WHERE id = ?', args: [id] });
   revalidatePath('/');
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function attachTags(promptId: number, tagNames: string[]): void {
+async function attachTags(promptId: number, tagNames: string[]): Promise<void> {
   const db = getDb();
-  const upsertTag = db.prepare(
-    'INSERT INTO tags (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name = name RETURNING id'
-  );
-  const linkTag = db.prepare(
-    'INSERT OR IGNORE INTO prompt_tags (prompt_id, tag_id) VALUES (?, ?)'
-  );
-
   for (const raw of tagNames) {
     const name = raw.trim().toLowerCase().slice(0, MAX_TAG_LENGTH);
     if (!name) continue;
-    const row = upsertTag.get(name) as { id: number };
-    linkTag.run(promptId, row.id);
+    const tagResult = await db.execute({
+      sql: 'INSERT INTO tags (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name = name RETURNING id',
+      args: [name],
+    });
+    const tagId = tagResult.rows[0]?.id as number;
+    if (tagId != null) {
+      await db.execute({ sql: 'INSERT OR IGNORE INTO prompt_tags (prompt_id, tag_id) VALUES (?, ?)', args: [promptId, tagId] });
+    }
   }
 }
+
 
