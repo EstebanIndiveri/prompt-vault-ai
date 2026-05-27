@@ -1,119 +1,47 @@
-# dev10to100 — Workshop GitHub Copilot CLI
+# Prompt Vault
 
-**CleverIT Group · Workshop técnico de 1 día**
+Tu biblioteca personal de prompts para Copilot y AI.
 
-Aprende a usar GitHub Copilot CLI como un agente que actúa, no solo sugiere: escribe código, hace commits, abre PRs y automatiza tareas — todo en lenguaje natural desde tu terminal.
+![Screenshot de Prompt Vault](prompt-vault/docs/screenshot.png)
 
 ---
 
-## Antes del workshop
+## Descripción
 
-Asegúrate de tener esto listo antes del día:
+Aplicación web para guardar, organizar y reutilizar prompts de Copilot/AI. Estética editorial refinada con sidebar de filtro por tags, búsqueda en tiempo real, copy-to-clipboard y CRUD completo.
 
-1. **Cuenta GitHub activa** (cualquier plan, Free funciona)
-2. **Node.js >= 18** — verificar: `node --version`
-3. **Git instalado** — verificar: `git --version`
-4. **Terminal de tu preferencia** (bash, zsh, PowerShell)
-5. **Copilot CLI instalado:**
+## Solución
 
-```bash
-# macOS / Linux
-curl -fsSL https://gh.io/copilot-install | bash
-# o via npm:
-npm install -g @github/copilot
+Se construyó una app Next.js 15 desde cero con Server Actions, base de datos Turso (libsql) para persistencia en la nube y CSS custom con design tokens sin dependencias de UI externas. La migración de better-sqlite3 a @libsql/client permite deploy directo en Vercel con variables de entorno.
 
-# Windows
-npm install -g @github/copilot
-```
+## Stack técnico
 
-6. **Clonar este repo:**
+- **Next.js 15** — App Router, Server Actions, force-dynamic
+- **Turso / libsql** — base de datos serverless; fallback a `file:data/vault.db` en local
+- **Tipografía** — Playfair Display + Lora + DM Sans (via next/font/google)
+- **CSS custom** — design tokens, sin dependencias de UI externas
+
+## Cómo correrlo localmente
 
 ```bash
-git clone https://github.com/karluiz/dev10to100
-cd dev10to100
+cd prompt-vault
 npm install
+cp .env.local.example .env.local   # completar TURSO_DATABASE_URL y TURSO_AUTH_TOKEN
+npm run dev
 ```
 
-7. **Autenticar el CLI:**
+## Deploy en Vercel
 
-```bash
-copilot /login
-```
+1. `turso db create prompt-vault && turso db tokens create prompt-vault`
+2. Setear `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN` en Vercel env vars
+3. Push a main → deploy automático
 
----
+## Auditoría pre-PR — hallazgos resueltos
 
-## Estructura del repo
-
-```
-dev10to100/
-├── src/                    # API Node.js/TypeScript de práctica
-│   ├── server.ts           # Entry point
-│   ├── utils.ts            # Funciones utilitarias (con bugs deliberados)
-│   ├── api/
-│   │   ├── users.ts        # Endpoints de usuarios
-│   │   └── auth.ts         # Endpoints de autenticación
-│   └── legacy/             # Código JS sin tipos (ejercicio Módulo 6)
-├── __tests__/              # Tests incompletos (ejercicio Módulos 1-2)
-├── docs/                   # Guías por módulo para participantes
-├── scripts/                # Scripts de automatización (ejercicio Módulo 4)
-├── instructor/             # Guía completa del instructor
-├── AGENTS.md               # Ejemplo de instrucciones para el agente
-└── docs/cheatsheet.md      # Comandos de referencia rápida
-```
-
----
-
-## Módulos del workshop
-
-| # | Módulo | Duración | Docs |
-|---|--------|----------|------|
-| 0 | Setup del entorno | 45 min | [→](docs/modulo-0-setup.md) |
-| 1 | Modo Interactivo: Fundamentos | 60 min | [→](docs/modulo-1-interactivo.md) |
-| 2 | Capacidades Agénticas Core | 75 min | [→](docs/modulo-2-agente.md) |
-| 3 | MCP y Extensibilidad | 60 min | [→](docs/modulo-3-mcp.md) |
-| 4 | Workflows Avanzados y Automatización | 60 min | [→](docs/modulo-4-automatizacion.md) |
-| 5 | Seguridad y Governance | 30 min | [→](docs/modulo-5-seguridad.md) |
-| 6 | Caso Real y Cierre | 60 min | [→](docs/modulo-6-caso-real.md) |
-
-📋 [Cheatsheet de comandos](docs/cheatsheet.md)
-
----
-
-## Comandos del proyecto de práctica
-
-```bash
-npm install          # Instalar dependencias
-npm test             # Ejecutar todos los tests
-npm run test:watch   # Tests en modo watch
-npm run dev          # Servidor en desarrollo (ts-node)
-npm run build        # Compilar TypeScript
-```
-
-Ejecutar un test específico:
-```bash
-npx jest __tests__/utils.test.ts
-npx jest --testNamePattern="validateEmail"
-```
-
----
-
-## Sobre el proyecto de práctica
-
-La API en `src/` tiene **bugs deliberados** para los ejercicios del workshop:
-
-| Archivo | Bug |
-|---------|-----|
-| `src/utils.ts` — `validateEmail` | Rechaza emails con subdominios (ej: `user@mail.example.com`) |
-| `src/utils.ts` — `getPage` | Paginación 0-indexed cuando la API espera 1-indexed |
-| `src/api/users.ts` — `GET /users` | Falla con error si la lista de usuarios está vacía |
-| `src/api/auth.ts` — `GET /auth/me` | No verifica si el token ha expirado |
-
-Los tests en `__tests__/` están incompletos a propósito. Completarlos es parte del ejercicio.
-
----
-
-## Prerrequisitos técnicos
-
-- Git básico (commit, branch, PR)
-- Familiaridad con la terminal
-- Leer y entender código TypeScript/JavaScript básico (no hace falta escribirlo, el agente lo hace)
+1. **[CRÍTICO]** Server Actions sin `try/catch` → modal se quedaba colgado en error → aplicado `try/catch` en `handleSave` y `handleDelete` con toast de error
+2. **[ALTO]** `navigator.clipboard` sin `.catch()` → feedback falso positivo en fallo → agregado `.catch()` con toast de error
+3. **[ALTO]** Sin validación de longitud en inputs → potencial DoS → límites: título 200c, body 50k, tags 20 máx, tag 50c
+4. **[MEDIO]** Tag array sin límite → O(n) DB operations por request → validación `MAX_TAGS = 20` antes de iterar
+5. **[MEDIO]** N+1 query en `getAllPrompts` → reemplazado por único JOIN query con `IN(placeholders)`
+6. **[MEDIO]** `setTimeout` sin cleanup → memory leak en unmount → `useRef` para el `timerId` + cleanup en `useEffect`
+7. **[MEDIO]** SQLite singleton sin `close()` → file lock en hot-reload → `process.once('exit')` y `process.once('SIGINT')` para cierre limpio
